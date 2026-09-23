@@ -303,7 +303,8 @@ with tab_map:
     m = folium.Map(
         location=[23.75, 120.95],
         zoom_start=7,
-        tiles="CartoDB dark_matter",  # 深色暗黑底圖，對齊成果範本風格
+        tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attr="&copy; OpenStreetMap contributors &copy; CARTO",
         control_scale=True
     )
 
@@ -346,7 +347,7 @@ with tab_map:
             fill_opacity=0.85,
             popup=folium.Popup(popup_html, max_width=240),
             tooltip=f"{reg_name}: {avg_temp}°C"
-        ).addTo(m)
+        ).add_to(m)
 
         # 測站文字標籤
         folium.map.Marker(
@@ -370,7 +371,7 @@ with tab_map:
                 </div>
                 """
             )
-        ).addTo(m)
+        ).add_to(m)
 
     # 渲染 Folium 地圖
     folium_static(m, width=1050, height=520)
