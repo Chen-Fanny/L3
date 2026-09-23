@@ -13,9 +13,9 @@
 
 ## 📸 Preview
 
-
 ![Dashboard](demo(1).jpg)
-![Dashboard](demo (2).jpg)
+
+![Dashboard](demo%20(2).jpg)
 
 ---
 
