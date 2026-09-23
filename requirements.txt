@@ -3,3 +3,8 @@ pandas>=2.0.0
 streamlit>=1.30.0
 folium>=0.15.0
 streamlit-folium>=0.16.0
+streamlit
+pandas
+matplotlib
+folium
+streamlit-folium
