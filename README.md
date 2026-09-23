@@ -7,9 +7,7 @@
 
 ### Taiwan Weather Dashboard
 
-🔗 Demo URL:
-(放你的網址)
-
+🔗 Demo URL:https://qgouzxx9hch7x3j5xqnkwh.streamlit.app/
 
 ## 📸 Preview
 
@@ -60,10 +58,40 @@ Each station provides:
 
 ---
 
-# 🛠 Implementation
+# ✨ Features
+
+- Retrieve weather data from Central Weather Administration (CWA) API
+- Parse JSON weather forecast data using Python
+- Store forecast information into SQLite database
+- Build interactive Streamlit weather dashboard
+- Visualize Taiwan weather station temperature distribution
+- Display weekly temperature forecast with charts and tables
+- Interactive Taiwan map using Folium
 
 
-## 1. Fetch CWA API Data
+---
 
-File:
+# 📂 Project Structure
+
+```text
+L3
+│
+├── app.py                  # Streamlit Web Dashboard
+├── fetch_weather.py        # Fetch CWA API weather data
+├── parse_weather.py        # Parse JSON and extract temperature data
+├── database.py             # Create SQLite database and store data
+│
+├── data.db                 # SQLite database
+├── weather_data.csv        # Parsed forecast data
+├── stations_data.csv       # Weather station observation data
+│
+├── cwa_weather_raw.json    # Original CWA API response
+├── cwa_stations_raw.json   # Raw station data
+│
+├── requirements.txt        # Python dependencies
+├── README.md
+│
+└── demo images
+    ├── demo1.jpg
+    └── demo2.jpg
 
