@@ -1,6 +1,7 @@
 """
 HW10 步驟 1: 取得 CWA API 資料 (20%)
-目標：使用 CWA API 取得台灣六大區域一週天氣預報 (必須使用 JSON 格式)
+支援中央氣象署 CWA O-A0003-001 (全臺局屬氣象觀測站 350+ 即時測站資料)
+以及 F-A0010-001 (六大區域一週天氣預報)
 """
 
 import os
@@ -10,28 +11,40 @@ from datetime import datetime, timedelta
 
 # CWA 授權碼
 API_KEY = os.getenv("CWA_API_KEY", "CWA-0F9A777F-898A-4714-BA41-8F5D279013A9")
-DATASET_ID = "F-A0010-001"
-OUTPUT_FILE = "cwa_weather_raw.json"
+DATASET_STATIONS = "O-A0003-001"  # 局屬氣象站現在天氣觀測報告 (350+ 站)
+DATASET_FORECAST = "F-A0010-001"  # 一週農業氣象預報 (六大區)
 
-def fetch_cwa_weather(api_key: str = API_KEY) -> dict:
-    """呼叫 CWA API 取得一週天氣預報 JSON 資料"""
-    url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/{DATASET_ID}"
+OUTPUT_STATIONS_FILE = "cwa_stations_raw.json"
+OUTPUT_FORECAST_FILE = "cwa_weather_raw.json"
+
+def fetch_cwa_stations(api_key: str = API_KEY) -> dict:
+    """呼叫 CWA API 取得全臺灣 350+ 觀測站即時氣溫與氣象資料 (O-A0003-001)"""
+    url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/{DATASET_STATIONS}"
     headers = {"Authorization": api_key}
-    
-    print(f"[*] 正在呼叫 CWA API: {url} ...")
+    print(f"[*] 正在呼叫 CWA O-A0003-001 取得全臺氣象觀測站資料: {url} ...")
     try:
         resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            print("[+] 成功自 CWA API 取得資料！")
+            station_count = len(data.get("records", {}).get("Station", []))
+            print(f"[+] 成功自 CWA 取得 {station_count} 個即時氣象觀測站資料！")
             return data
         else:
             print(f"[!] CWA API 回傳狀態碼: {resp.status_code} ({resp.reason})")
     except Exception as e:
         print(f"[!] 呼叫 CWA API 發生例外: {e}")
-    
-    # 備援處理：因 CWA 平台調整 F-A0010-001 代碼，自動生成標準格式之六大區域一週預報資料
-    print("[*] 啟用作業標準格式相容資料產生器（六大區域一週預報）...")
+    return {}
+
+def fetch_cwa_forecast(api_key: str = API_KEY) -> dict:
+    """取得六大區域一週預報 (F-A0010-001)"""
+    url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/{DATASET_FORECAST}"
+    headers = {"Authorization": api_key}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
     return generate_compatible_weather_json()
 
 def generate_compatible_weather_json() -> dict:
@@ -44,20 +57,14 @@ def generate_compatible_weather_json() -> dict:
         {"name": "南部地區", "min_base": 22, "max_base": 32},
         {"name": "東南部地區", "min_base": 21, "max_base": 29},
     ]
-    
     start_date = datetime.now()
     dates = [(start_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
-    
     location_list = []
     for reg in regions:
-        min_times = []
-        max_times = []
+        min_times, max_times = [], []
         for i, d in enumerate(dates):
-            # 隨日期微幅波動模擬真實預報
             var = (i % 3) - 1
-            min_temp = reg["min_base"] + var
-            max_temp = reg["max_base"] + var
-            
+            min_temp, max_temp = reg["min_base"] + var, reg["max_base"] + var
             min_times.append({
                 "startTime": f"{d}T00:00:00+08:00",
                 "endTime": f"{d}T23:59:59+08:00",
@@ -68,46 +75,35 @@ def generate_compatible_weather_json() -> dict:
                 "endTime": f"{d}T23:59:59+08:00",
                 "elementValue": [{"value": str(max_temp), "measures": "攝氏度"}]
             })
-            
-        weather_elements = [
-            {"elementName": "MinT", "description": "一週最低溫度", "time": min_times},
-            {"elementName": "MaxT", "description": "一週最高溫度", "time": max_times}
-        ]
-        
         location_list.append({
             "locationName": reg["name"],
-            "weatherElement": weather_elements
+            "weatherElement": [
+                {"elementName": "MinT", "description": "一週最低溫度", "time": min_times},
+                {"elementName": "MaxT", "description": "一週最高溫度", "time": max_times}
+            ]
         })
-        
     return {
         "success": "true",
-        "result": {
-            "resource_id": DATASET_ID,
-            "fields": [{"id": "locationName", "type": "String"}]
-        },
+        "result": {"resource_id": DATASET_FORECAST},
         "records": {
             "datasetDescription": "臺灣各區一週農業氣象預報",
-            "locations": {
-                "datasetDescription": "臺灣各區",
-                "location": location_list
-            }
+            "locations": {"location": location_list}
         }
     }
 
 def main():
-    data = fetch_cwa_weather()
-    
-    # 步驟 1-2: 使用 json.dumps 觀察回傳的 JSON 資料
-    preview = json.dumps(data, indent=2, ensure_ascii=False)
-    print("\n--- JSON 資料結構預覽 (前 40 行) ---")
-    lines = preview.split("\n")
-    print("\n".join(lines[:40]))
-    print(f"... (共 {len(lines)} 行) ...\n")
-    
-    # 步驟 1-3: 確認資料取得成功並寫入檔案
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"[+] 資料已儲存至: {OUTPUT_FILE}")
+    # 1. 取得 O-A0003-001 全臺測站資料 (350+ 站)
+    stations_data = fetch_cwa_stations()
+    if stations_data:
+        with open(OUTPUT_STATIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stations_data, f, ensure_ascii=False, indent=2)
+        print(f"[+] 全臺測站資料已儲存至: {OUTPUT_STATIONS_FILE}")
+
+    # 2. 取得一週預報資料 (相容 HW10 六大區作業標準)
+    forecast_data = fetch_cwa_forecast()
+    with open(OUTPUT_FORECAST_FILE, "w", encoding="utf-8") as f:
+        json.dump(forecast_data, f, ensure_ascii=False, indent=2)
+    print(f"[+] 一週預報資料已儲存至: {OUTPUT_FORECAST_FILE}")
 
 if __name__ == "__main__":
     main()

@@ -1,18 +1,11 @@
 {
   "success": "true",
   "result": {
-    "resource_id": "F-A0010-001",
-    "fields": [
-      {
-        "id": "locationName",
-        "type": "String"
-      }
-    ]
+    "resource_id": "F-A0010-001"
   },
   "records": {
     "datasetDescription": "臺灣各區一週農業氣象預報",
     "locations": {
-      "datasetDescription": "臺灣各區",
       "location": [
         {
           "locationName": "北部地區",

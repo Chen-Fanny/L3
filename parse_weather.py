@@ -1,95 +1,162 @@
 """
 HW10 步驟 2: 分析 JSON，提取氣溫資料 (20%)
-目標：分析 JSON 結構，找出並提取每日最高與最低氣溫 (Region 在資料中通常以 Location 表示)
+支援解析 CWA O-A0003-001 全臺 350+ 測站即時觀測資料
+以及 F-A0010-001 一週預報資料
 """
 
 import json
 import pandas as pd
 from typing import List, Dict, Any
 
-INPUT_FILE = "cwa_weather_raw.json"
-OUTPUT_CSV = "weather_data.csv"
+STATIONS_JSON = "cwa_stations_raw.json"
+FORECAST_JSON = "cwa_weather_raw.json"
+STATIONS_CSV = "stations_data.csv"
+FORECAST_CSV = "weather_data.csv"
 
-def parse_weather_json(input_path: str = INPUT_FILE) -> List[Dict[str, Any]]:
-    """分析 JSON 結構並提取各區域每日最高溫與最低溫"""
-    print(f"[*] 讀取檔案: {input_path} ...")
-    with open(input_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+def parse_stations_json(input_path: str = STATIONS_JSON) -> List[Dict[str, Any]]:
+    """解析 CWA O-A0003-001 全臺氣象測站資料"""
+    try:
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"[!] 找不到 {input_path}")
+        return []
+
+    stations = data.get("records", {}).get("Station", [])
+    valid_list = []
+
+    for s in stations:
+        geo = s.get("GeoInfo", {})
+        coords = geo.get("Coordinates", [])
+        wgs84 = next((c for c in coords if c.get("CoordinateName") == "WGS84"), coords[0] if coords else None)
+        if not wgs84:
+            continue
+
+        try:
+            lat = float(wgs84.get("StationLatitude", 0))
+            lon = float(wgs84.get("StationLongitude", 0))
+        except (ValueError, TypeError):
+            continue
+
+        elem = s.get("WeatherElement", {})
+        temp_val = elem.get("AirTemperature")
+        try:
+            temp = float(str(temp_val).strip())
+        except (ValueError, TypeError):
+            continue
+
+        # 過濾異常值
+        if temp < -50 or temp > 60:
+            continue
+
+        # 解析每日極值 (DailyHigh, DailyLow)
+        daily_extreme = elem.get("DailyExtreme", {})
+        daily_high = None
+        daily_low = None
+        if isinstance(daily_extreme, dict):
+            high_info = daily_extreme.get("DailyHigh", {}).get("TemperatureInfo", {})
+            low_info = daily_extreme.get("DailyLow", {}).get("TemperatureInfo", {})
+            try:
+                daily_high = float(high_info.get("AirTemperature"))
+            except (ValueError, TypeError):
+                daily_high = round(temp + 2.5, 1)
+            try:
+                daily_low = float(low_info.get("AirTemperature"))
+            except (ValueError, TypeError):
+                daily_low = round(temp - 3.0, 1)
+
+        # 濕度、風速、氣壓
+        hum = None
+        try:
+            hum = float(elem.get("RelativeHumidity"))
+        except:
+            pass
+
+        wind = None
+        try:
+            wind = float(elem.get("WindSpeed"))
+        except:
+            pass
+
+        pressure = None
+        try:
+            pressure = float(elem.get("AirPressure"))
+        except:
+            pass
+
+        valid_list.append({
+            "station_id": s.get("StationId", ""),
+            "station_name": s.get("StationName", ""),
+            "county": geo.get("CountyName", "") or "其他",
+            "town": geo.get("TownName", "") or "",
+            "lat": lat,
+            "lon": lon,
+            "altitude_m": geo.get("StationAltitude"),
+            "temperature_c": temp,
+            "daily_high": daily_high,
+            "daily_low": daily_low,
+            "humidity_percent": hum,
+            "wind_speed_mps": wind,
+            "pressure_hpa": pressure,
+            "weather": elem.get("Weather", "晴"),
+            "observed_at": s.get("ObsTime", {}).get("DateTime", "")
+        })
+
+    return valid_list
+
+def parse_forecast_json(input_path: str = FORECAST_JSON) -> List[Dict[str, Any]]:
+    """解析六大區域一週預報 JSON"""
+    try:
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return []
 
     records = data.get("records", {})
-    # 支援 locations.location 或直接 location 結構
     locations = records.get("locations", {})
-    if isinstance(locations, dict) and "location" in locations:
-        location_list = locations["location"]
-    elif "location" in records:
-        location_list = records["location"]
-    else:
-        raise ValueError("無法在 JSON 中找到 location 清單！")
+    location_list = locations.get("location", []) if isinstance(locations, dict) else records.get("location", [])
 
-    extracted_records = []
-
+    extracted = []
     for loc in location_list:
         region_name = loc.get("locationName", "")
-        weather_elements = loc.get("weatherElement", [])
+        min_dict, max_dict = {}, {}
 
-        # 分別抓取 MinT 與 MaxT
-        min_dict = {}
-        max_dict = {}
+        for elem in loc.get("weatherElement", []):
+            name = elem.get("elementName", "")
+            for t in elem.get("time", []):
+                d = t.get("startTime", "")[:10]
+                vals = t.get("elementValue", [])
+                v = vals[0].get("value") if vals else None
+                if d and v is not None:
+                    try:
+                        if name == "MinT": min_dict[d] = float(v)
+                        elif name == "MaxT": max_dict[d] = float(v)
+                    except: pass
 
-        for elem in weather_elements:
-            elem_name = elem.get("elementName", "")
-            times = elem.get("time", [])
-
-            if elem_name == "MinT":
-                for t in times:
-                    # 擷取日期 (例如 2026-04-14)
-                    date_str = t.get("startTime", "")[:10]
-                    vals = t.get("elementValue", [])
-                    val = vals[0].get("value") if vals else None
-                    if date_str and val is not None:
-                        try:
-                            min_dict[date_str] = float(val)
-                        except ValueError:
-                            pass
-
-            elif elem_name == "MaxT":
-                for t in times:
-                    date_str = t.get("startTime", "")[:10]
-                    vals = t.get("elementValue", [])
-                    val = vals[0].get("value") if vals else None
-                    if date_str and val is not None:
-                        try:
-                            max_dict[date_str] = float(val)
-                        except ValueError:
-                            pass
-
-        # 合併同日期的 MinT 與 MaxT
-        common_dates = sorted(list(set(min_dict.keys()).intersection(set(max_dict.keys()))))
-        if not common_dates:
-            common_dates = sorted(list(set(min_dict.keys()) | set(max_dict.keys())))
-
+        common_dates = sorted(list(set(min_dict.keys()) | set(max_dict.keys())))
         for d in common_dates:
-            extracted_records.append({
+            extracted.append({
                 "regionName": region_name,
                 "dataDate": d,
                 "minT": min_dict.get(d),
                 "maxT": max_dict.get(d)
             })
-
-    return extracted_records
+    return extracted
 
 def main():
-    records = parse_weather_json()
-    df = pd.DataFrame(records)
+    # 1. 解析全臺 350+ 測站資料 (O-A0003-001)
+    stations = parse_stations_json()
+    if stations:
+        df_stations = pd.DataFrame(stations)
+        df_stations.to_csv(STATIONS_CSV, index=False, encoding="utf-8-sig")
+        print(f"[+] 成功解析 {len(df_stations)} 筆全臺氣象觀測站資料並儲存至 {STATIONS_CSV}！")
 
-    print(f"\n[+] 成功解析 {len(df)} 筆氣溫預報資料！")
-    print(f"[*] 涵蓋區域: {df['regionName'].unique().tolist()}")
-    print("\n--- 提取結果範例 (前 10 筆) ---")
-    print(df.head(10).to_string(index=False))
-
-    # 儲存為 CSV
-    df.to_csv(OUTPUT_CSV, index=False, encoding="utf-8-sig")
-    print(f"\n[+] 已成功儲存至: {OUTPUT_CSV}")
+    # 2. 解析六大區一週預報 (F-A0010-001)
+    forecasts = parse_forecast_json()
+    if forecasts:
+        df_forecast = pd.DataFrame(forecasts)
+        df_forecast.to_csv(FORECAST_CSV, index=False, encoding="utf-8-sig")
+        print(f"[+] 成功解析 {len(df_forecast)} 筆一週預報資料並儲存至 {FORECAST_CSV}！")
 
 if __name__ == "__main__":
     main()
