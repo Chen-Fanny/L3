@@ -15,7 +15,7 @@
 
 
 ![Dashboard](demo(1).jpg)
-![Dashboard](demo(2).jpg)
+![Dashboard](demo (2).jpg)
 
 ---
 
