@@ -299,14 +299,22 @@ with tab_map:
 
     df_map = get_all_forecasts_for_map()
 
-    # 建立 Folium 地圖，預設中心台灣本島 [23.7, 120.95]
+    # 建立 Folium 地圖，採用乾淨無浮水印之深色高解析氣象底圖 (對齊成果範本風格)
     m = folium.Map(
         location=[23.75, 120.95],
         zoom_start=7,
-        tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        attr="&copy; OpenStreetMap contributors &copy; CARTO",
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        attr="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
+        name="深色氣象底圖 (Dark)",
         control_scale=True
     )
+
+    # 支援切換標準街道地圖
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="標準街道圖 (Street)",
+        control=True
+    ).add_to(m)
 
     # 在地圖上為六大區域繪製氣溫圓點標記
     for _, row in df_map.iterrows():
@@ -372,6 +380,9 @@ with tab_map:
                 """
             )
         ).add_to(m)
+
+    # 加入圖層控制開關 (右上角)
+    folium.LayerControl(position="topright").add_to(m)
 
     # 渲染 Folium 地圖
     folium_static(m, width=1050, height=520)
